@@ -12,4 +12,5 @@ serde = { version = "*", features = ["derive"]}
 schemars.workspace = true
 pgdog-vector = { path = "../pgdog-vector" }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
-postgres-types = "0.2.13"
+# Any 0.2: a program embedding PgDog may patch postgres-types to its own fork.
+postgres-types = "0.2"

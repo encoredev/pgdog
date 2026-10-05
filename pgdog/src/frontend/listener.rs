@@ -25,6 +25,15 @@ pub(crate) struct Listener {
     shutdown: CancellationToken,
 }
 
+/// Whether the listener acts on the process's SIGHUP, reloading the
+/// configuration from its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Signals {
+    Handle,
+    /// For a program that embeds PgDog and handles signals itself.
+    Ignore,
+}
+
 impl Listener {
     /// Create new client listener.
     pub(crate) fn new(addr: impl ToString) -> Self {
@@ -76,9 +85,21 @@ impl Listener {
 
     /// Listen for client connections and handle them.
     pub(crate) async fn listen(&mut self) -> Result<(), Error> {
-        info!("🐕 PgDog listening on {}", self.addr);
         let listener = Self::bind(&self.addr).await?;
-        let mut sighup = Sighup::new();
+        self.listen_on(listener, Signals::Handle).await
+    }
+
+    /// Handle the client connections `listener` accepts.
+    pub(crate) async fn listen_on(
+        &mut self,
+        listener: TcpListener,
+        signals: Signals,
+    ) -> Result<(), Error> {
+        info!("🐕 PgDog listening on {}", self.addr);
+        let mut sighup = match signals {
+            Signals::Handle => Some(Sighup::new()),
+            Signals::Ignore => None,
+        };
         let shutdown_signal = comms().shutting_down();
         let mut shutting_down = false;
 
@@ -114,7 +135,12 @@ impl Listener {
                     self.start_shutdown();
                 }
 
-                _ = sighup.recv() => {
+                _ = async {
+                    match &mut sighup {
+                        Some(sighup) => sighup.recv().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
                     if let Err(err) = reload(false) {
                         error!("configuration reload error: {}", err);
                     }

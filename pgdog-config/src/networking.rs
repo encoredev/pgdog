@@ -19,6 +19,9 @@ pub enum TlsVerifyMode {
     Disabled,
     /// Use TLS if available; do not verify the server certificate (default).
     Prefer,
+    /// Use TLS, failing if the server does not offer it; do not verify the
+    /// server certificate.
+    Require,
     /// Validate the server certificate against a CA bundle.
     VerifyCa,
     /// Validate the server certificate and that the hostname matches.
@@ -32,6 +35,7 @@ impl FromStr for TlsVerifyMode {
         match s.to_lowercase().replace(['_', '-'], "").as_str() {
             "disabled" => Ok(Self::Disabled),
             "prefer" => Ok(Self::Prefer),
+            "require" => Ok(Self::Require),
             "verifyca" => Ok(Self::VerifyCa),
             "verifyfull" => Ok(Self::VerifyFull),
             _ => Err(format!("Invalid TLS verify mode: {}", s)),

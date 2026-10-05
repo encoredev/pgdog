@@ -281,7 +281,9 @@ impl Client {
 
         let (user, database) = user_database_from_params(&params);
         let database = database.to_string();
-        let admin = database == config.config.admin.name && config.config.admin.user == user;
+        let admin = !crate::embed::embedded()
+            && database == config.config.admin.name
+            && config.config.admin.user == user;
         let admin_password = &config.config.admin.password;
         let auth_type = databases::databases()
             .auth_type((user, database.as_str()))
