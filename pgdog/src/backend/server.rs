@@ -294,9 +294,10 @@ impl Server {
                         )));
                     }
                 }
-            } else if tls.verify == TlsVerifyMode::VerifyFull
-                || tls.verify == TlsVerifyMode::VerifyCa
-            {
+            } else if matches!(
+                tls.verify,
+                TlsVerifyMode::Require | TlsVerifyMode::VerifyCa | TlsVerifyMode::VerifyFull
+            ) {
                 // If we require TLS but server doesn't support it, fail
                 error!("server does not support TLS but it is required [{}]", addr,);
                 return Err(Error::TlsRequired);

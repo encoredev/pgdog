@@ -476,7 +476,7 @@ fn build_connector(config_key: &ConnectorConfigKey) -> Result<Arc<ClientConfig>,
             ClientConfig::builder().with_root_certificates(roots),
             client_auth,
         )?,
-        TlsVerifyMode::Prefer => {
+        TlsVerifyMode::Prefer | TlsVerifyMode::Require => {
             let verifier = AllowAllVerifier;
             build_client_config(
                 ClientConfig::builder()

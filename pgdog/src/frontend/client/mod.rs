@@ -261,7 +261,9 @@ impl Client {
         }
 
         let (user, database) = user_database_from_params(&params);
-        let admin = database == config.config.admin.name && config.config.admin.user == user;
+        let admin = !crate::embed::embedded()
+            && database == config.config.admin.name
+            && config.config.admin.user == user;
         let admin_password = &config.config.admin.password;
         let auth_type = &config.config.general.auth_type;
         let passthrough = config.config.general.passthrough_auth();

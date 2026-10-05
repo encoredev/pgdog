@@ -10,6 +10,11 @@ repository = "https://github.com/pgdogdev/pgdog"
 readme = "README.md"
 default-run = "pgdog"
 
+[lints.rust]
+# PgDog's own build sets `--cfg tokio_unstable` (.cargo/config.toml); a
+# program embedding the library need not.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tokio_unstable)"] }
+
 [features]
 fips = ["tokio-rustls/fips"]
 
