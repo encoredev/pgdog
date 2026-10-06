@@ -11,7 +11,7 @@ thiserror = "2"
 toml = "0.8"
 url = "2"
 uuid.workspace = true
-rand = "*"
+rand = "0.10"
 pgdog-vector = { path = "../pgdog-vector" }
 once_cell = "*"
 schemars.workspace = true
