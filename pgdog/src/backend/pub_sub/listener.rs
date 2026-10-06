@@ -31,6 +31,11 @@ use crate::{
     tasks,
 };
 
+/// The shortest wait before the listener reconnects. `connect_attempt_delay`
+/// defaults to none, and a server that refuses connections outright would
+/// otherwise be retried in a busy loop.
+const MIN_RECONNECT_DELAY: Duration = Duration::from_secs(1);
+
 #[derive(Debug, Clone)]
 enum Request {
     Unsubscribe(String),
@@ -40,12 +45,23 @@ enum Request {
 
 impl From<Request> for ProtocolMessage {
     fn from(val: Request) -> Self {
+        // Channels and payloads arrive parsed, so their quotes are doubled
+        // again to quote them.
+        let channel = |channel: &str| channel.replace('"', "\"\"");
         match val {
-            Request::Unsubscribe(channel) => Query::new(format!("UNLISTEN \"{}\"", channel)).into(),
-            Request::Subscribe(channel) => Query::new(format!("LISTEN \"{}\"", channel)).into(),
-            Request::Notify { channel, payload } => {
-                Query::new(format!("NOTIFY \"{}\", '{}'", channel, payload)).into()
+            Request::Unsubscribe(name) => {
+                Query::new(format!("UNLISTEN \"{}\"", channel(&name))).into()
             }
+            Request::Subscribe(name) => Query::new(format!("LISTEN \"{}\"", channel(&name))).into(),
+            Request::Notify {
+                channel: name,
+                payload,
+            } => Query::new(format!(
+                "NOTIFY \"{}\", '{}'",
+                channel(&name),
+                payload.replace('\'', "''")
+            ))
+            .into(),
         }
     }
 }
@@ -251,38 +267,40 @@ impl PubSubListener {
         let pool = listener.pool.clone();
         let comms = listener.comms.clone();
         tasks::spawn("pub(crate) sub", async move {
+            select! {
+                _ = comms.start.notified() => {}
+                _ = comms.shutdown.cancelled() => return,
+            }
+
+            // Once launched, the listener reconnects whenever its server
+            // connection ends, until it is shut down: nothing launches it
+            // again.
             loop {
                 select! {
-                    _ = comms.start.notified() => {}
-                    _ = comms.shutdown.cancelled() => {
-                        rx.close();
-                    }
-                }
-
-                if rx.is_closed() {
-                    break;
-                }
-
-                select! {
-                    _ = comms.shutdown.cancelled() => {
-                        rx.close(); // Drain remaining messages.
-                    }
+                    _ = comms.shutdown.cancelled() => break,
 
                     result = Self::run(id, &pool, &pool_key, &mut rx, channels.clone()) => {
                         if let Err(err) = result {
                             error!("pub/sub error: {} [{}]", err, pool.addr());
-                            // Don't reconnect for another connect attempt delay
-                            // to avoid connection storms during incidents.
-                            select! {
-                                _ = safe_sleep(Duration::from_millis(config().config.general.connect_attempt_delay)) => {}
-                                _ = comms.shutdown.cancelled() => rx.close(),
-                            }
                         }
                     }
                 }
 
+                // Every sender is gone: nothing can use this listener.
                 if rx.is_closed() {
                     break;
+                }
+
+                // Don't reconnect for another connect attempt delay
+                // to avoid connection storms during incidents.
+                let delay = config()
+                    .config
+                    .general
+                    .connect_attempt_delay()
+                    .max(MIN_RECONNECT_DELAY);
+                select! {
+                    _ = safe_sleep(delay) => {}
+                    _ = comms.shutdown.cancelled() => break,
                 }
             }
         });
@@ -707,5 +725,81 @@ mod test {
             .expect("notify request");
 
         expect_notify(&mut rx, "events", "payload").await;
+    }
+
+    #[test]
+    fn quotes_in_channels_and_payloads_stay_quoted() {
+        assert_request_query(
+            Request::Subscribe("say \"hi\"".into()),
+            "LISTEN \"say \"\"hi\"\"\"",
+        );
+        assert_request_query(
+            Request::Unsubscribe("say \"hi\"".into()),
+            "UNLISTEN \"say \"\"hi\"\"\"",
+        );
+        assert_request_query(
+            Request::Notify {
+                channel: "events".into(),
+                payload: "it's'; select 1; --".into(),
+            },
+            "NOTIFY \"events\", 'it''s''; select 1; --'",
+        );
+    }
+
+    /// Accept the next connection within `within`, and close it at once.
+    async fn refuse_next(server: &tokio::net::TcpListener, within: Duration) -> bool {
+        match tokio::time::timeout(within, server.accept()).await {
+            Ok(accepted) => {
+                drop(accepted.expect("accept"));
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    #[tokio::test]
+    async fn listener_reconnects_after_failures_until_shut_down() {
+        use crate::backend::pool::{Address, Config, PoolConfig};
+
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let pool = Pool::new(&PoolConfig {
+            address: Address {
+                port: server.local_addr().expect("local address").port(),
+                ..Address::new_test()
+            },
+            config: Config::default(),
+        });
+        let pub_sub = PubSubListener::new(&pool, &test_user("pgdog", "pgdog"), 0);
+        let wait = MIN_RECONNECT_DELAY * 3;
+
+        assert!(
+            !refuse_next(&server, MIN_RECONNECT_DELAY).await,
+            "the listener waits to be launched"
+        );
+        pub_sub.launch();
+        // Every connection fails, and each failure is followed by another try.
+        for attempt in 0..3 {
+            assert!(
+                refuse_next(&server, wait).await,
+                "attempt {attempt}: the listener reconnects after a failure"
+            );
+        }
+
+        // Launching it again changes nothing: it goes on trying, once at a
+        // time.
+        pub_sub.launch();
+        assert!(refuse_next(&server, wait).await, "the listener goes on");
+        assert!(
+            !refuse_next(&server, MIN_RECONNECT_DELAY / 2).await,
+            "the listener tries once at a time"
+        );
+
+        pub_sub.shutdown();
+        assert!(
+            !refuse_next(&server, wait).await,
+            "a shut down listener stays down"
+        );
     }
 }
