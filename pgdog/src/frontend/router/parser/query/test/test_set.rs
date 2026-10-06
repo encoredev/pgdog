@@ -14,6 +14,26 @@ use super::Error;
 use super::setup::*;
 
 #[test]
+fn test_reset_all_in_a_batch_of_sets_is_split() {
+    for mut test in [
+        QueryParserTest::new(),
+        QueryParserTest::new_single_shard(&config()),
+    ] {
+        let command = test.execute(vec![
+            Query::new("RESET ALL; SET ROLE app; RESET statement_timeout").into(),
+        ]);
+
+        let Command::Split(queries) = command else {
+            panic!("expected RESET ALL in a batch of SETs to split, got {command:?}");
+        };
+        assert_eq!(
+            queries,
+            ["RESET ALL", "SET role TO app", "RESET statement_timeout"],
+        );
+    }
+}
+
+#[test]
 fn test_mixed_set_passthrough_in_session_mode() {
     let mut test = QueryParserTest::new_session_mode(&config());
 
