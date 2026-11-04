@@ -9,7 +9,7 @@ use url::Url;
 
 use super::{Password, password::PasswordSource};
 use crate::backend::Error;
-use crate::backend::auth::{azure_workload_identity, rds_iam, vault};
+use crate::backend::auth::{azure_workload_identity, gcp_iam, rds_iam, vault};
 use crate::backend::pool::dns_cache::DnsCache;
 use crate::backend::pool::token_cache::TokenCache;
 use crate::config::{Database, ServerAuth, ServerTls, User, config};
@@ -144,6 +144,13 @@ impl Address {
                     .get_or_fetch(self, azure_workload_identity::token)
                     .await?;
                 vec![Password::new(&token, PasswordSource::AzureIdentity)]
+            }
+
+            ServerAuth::GcpIam => {
+                let token = TokenCache::global()
+                    .get_or_fetch(self, gcp_iam::token)
+                    .await?;
+                vec![Password::new(&token, PasswordSource::GcpIam)]
             }
 
             ServerAuth::VaultDynamic => {
@@ -545,6 +552,43 @@ mod test {
         TokenCache::global().evict(&addr);
 
         assert_eq!(secret, "rds-token");
+    }
+
+    #[tokio::test]
+    async fn test_auth_secret_gcp_iam_serves_token_from_cache() {
+        let database = Database {
+            name: "pgdog".into(),
+            host: "auth-secrets-gcp.internal".into(),
+            port: 15434,
+            ..Default::default()
+        };
+        let user = User {
+            name: "gcp_user".into(),
+            server_password: Some("server-pass".into()),
+            server_auth: ServerAuth::GcpIam,
+            database: "pgdog".into(),
+            ..Default::default()
+        };
+        let addr = Address::new(&database, &user, 0);
+        assert!(
+            addr.passwords.is_empty(),
+            "GCP IAM addresses must not carry static passwords"
+        );
+
+        let expiry = SystemTime::now() + Duration::from_secs(3600);
+        TokenCache::global().set(&addr, "gcp-token".into(), expiry);
+
+        let secret = addr
+            .auth_secrets()
+            .await
+            .unwrap()
+            .first()
+            .unwrap()
+            .to_string();
+
+        TokenCache::global().evict(&addr);
+
+        assert_eq!(secret, "gcp-token");
     }
 
     #[tokio::test]
