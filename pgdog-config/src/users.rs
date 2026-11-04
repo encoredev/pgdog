@@ -199,6 +199,9 @@ pub enum ServerAuth {
     RdsIam,
     /// Generate an Azure Workload Identity auth token per connection attempt.
     AzureWorkloadIdentity,
+    /// Use the workload's Google Cloud service account access token, for
+    /// Cloud SQL and AlloyDB IAM database authentication.
+    GcpIam,
     /// Fetch dynamic credentials from HashiCorp Vault (database secrets engine).
     /// Vault generates a new username and password on each lease.
     VaultDynamic,
@@ -213,6 +216,7 @@ impl Display for ServerAuth {
             Self::Password => "password",
             Self::RdsIam => "rds_iam",
             Self::AzureWorkloadIdentity => "azure_workload_identity",
+            Self::GcpIam => "gcp_iam",
             Self::VaultDynamic => "vault_dynamic",
             Self::VaultStatic => "vault_static",
         };
@@ -224,7 +228,11 @@ impl ServerAuth {
     pub fn is_external_identity(&self) -> bool {
         matches!(
             self,
-            Self::RdsIam | Self::AzureWorkloadIdentity | Self::VaultDynamic | Self::VaultStatic
+            Self::RdsIam
+                | Self::AzureWorkloadIdentity
+                | Self::GcpIam
+                | Self::VaultDynamic
+                | Self::VaultStatic
         )
     }
 }
@@ -761,6 +769,23 @@ server_iam_region = "us-east-1"
         let user = users.users.first().unwrap();
         assert_eq!(user.server_auth, ServerAuth::RdsIam);
         assert_eq!(user.server_iam_region.as_deref(), Some("us-east-1"));
+    }
+
+    #[test]
+    fn test_user_server_auth_gcp_iam() {
+        let source = r#"
+[[users]]
+name = "alice@my-project.iam"
+database = "db"
+password = "secret"
+server_auth = "gcp_iam"
+"#;
+
+        let users: Users = toml::from_str(source).unwrap();
+        let user = users.users.first().unwrap();
+        assert_eq!(user.server_auth, ServerAuth::GcpIam);
+        assert!(user.is_external_identity());
+        assert_eq!(user.server_auth.to_string(), "gcp_iam");
     }
 
     #[test]

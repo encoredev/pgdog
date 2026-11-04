@@ -46,7 +46,7 @@
 use std::time::Duration;
 
 use super::{Error, Guard, Healtcheck, Pool, Request};
-use crate::backend::auth::{azure_workload_identity, rds_iam, vault};
+use crate::backend::auth::{azure_workload_identity, gcp_iam, rds_iam, vault};
 use crate::backend::pool::inner::ShouldCreate;
 use crate::backend::pool::token_cache::TokenCache;
 use crate::backend::{ConnectReason, DisconnectReason};
@@ -214,6 +214,11 @@ impl Monitor {
                                 },
                             )
                         }
+                        ServerAuth::GcpIam => gcp_iam::token(addr.clone()).await.map(
+                            |(token, expires_at)| {
+                                TokenCache::global().set(&addr, token, expires_at)
+                            },
+                        ),
                         ServerAuth::VaultStatic => {
                             vault::static_backend_credentials(addr.clone()).await.map(
                                 |(token, refresh_at)| {

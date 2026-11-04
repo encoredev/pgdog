@@ -147,6 +147,11 @@
           "const": "azure_workload_identity"
         },
         {
+          "description": "Use the workload's Google Cloud service account access token, for\nCloud SQL and AlloyDB IAM database authentication.",
+          "type": "string",
+          "const": "gcp_iam"
+        },
+        {
           "description": "Fetch dynamic credentials from HashiCorp Vault (database secrets engine).\nVault generates a new username and password on each lease.",
           "type": "string",
           "const": "vault_dynamic"

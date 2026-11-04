@@ -155,13 +155,13 @@ impl ConfigAndUsers {
 
         if self.config.general.passthrough_auth != PassthroughAuth::Disabled {
             return Err(Error::ParseError(
-                "\"passthrough_auth\" must be \"disabled\" when any user has \"server_auth = \\\"rds_iam\\\"\", \"server_auth = \\\"azure_workload_identity\\\"\" or \"server_auth = \\\"vault\\\"\"".into(),
+                "\"passthrough_auth\" must be \"disabled\" when any user has \"server_auth = \\\"rds_iam\\\"\", \"server_auth = \\\"azure_workload_identity\\\"\", \"server_auth = \\\"gcp_iam\\\"\" or \"server_auth = \\\"vault\\\"\"".into(),
             ));
         }
 
         if self.config.general.tls_verify == TlsVerifyMode::Disabled {
             return Err(Error::ParseError(
-                "\"tls_verify\" cannot be \"disabled\" when any user has \"server_auth = \\\"rds_iam\\\"\", \"server_auth = \\\"azure_workload_identity\\\"\" or \"server_auth = \\\"vault\\\"\"".into(),
+                "\"tls_verify\" cannot be \"disabled\" when any user has \"server_auth = \\\"rds_iam\\\"\", \"server_auth = \\\"azure_workload_identity\\\"\", \"server_auth = \\\"gcp_iam\\\"\" or \"server_auth = \\\"vault\\\"\"".into(),
             ));
         }
 
@@ -1683,6 +1683,24 @@ shard = 0
         let err = config.check().unwrap_err().to_string();
         assert!(err.contains("passthrough_auth"));
         assert!(err.contains("azure_workload_identity"));
+    }
+
+    #[test]
+    fn test_gcp_iam_rejects_tls_verify_disabled() {
+        let mut config = ConfigAndUsers::default();
+        config.config.general.tls_verify = TlsVerifyMode::Disabled;
+        config.config.general.passthrough_auth = PassthroughAuth::Disabled;
+        config.users.users.push(crate::User {
+            name: "alice".into(),
+            database: "db".into(),
+            password: Some("secret".into()),
+            server_auth: ServerAuth::GcpIam,
+            ..Default::default()
+        });
+
+        let err = config.check().unwrap_err().to_string();
+        assert!(err.contains("tls_verify"));
+        assert!(err.contains("gcp_iam"));
     }
 
     #[test]
