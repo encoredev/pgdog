@@ -198,8 +198,9 @@ PgDog supports five authentication methods:
 1. Password-based
 2. AWS RDS IAM
 3. Azure Workload Identity
-4. HashiCorp Vault dynamic credentials
-5. HashiCorp Vault static role credentials
+4. Google Cloud IAM (Cloud SQL and AlloyDB)
+5. HashiCorp Vault dynamic credentials
+6. HashiCorp Vault static role credentials
 
 #### Password-based authentication
 
@@ -245,6 +246,25 @@ server_auth = "azure_workload_identity"
 ```
 
 When any user has `server_auth = "azure_workload_identity"`, the following settings must be configured as well:
+
+- `tls_verify` must **not** be `"disabled"`.
+- `passthrough_auth` must be `"disabled"`.
+
+#### Google Cloud IAM authentication
+
+PgDog can authenticate to Cloud SQL for PostgreSQL and AlloyDB with IAM database authentication, using the access token of the service account the workload runs as (on GCE, GKE with Workload Identity, or Cloud Run). The token comes from the metadata server (`GCE_METADATA_HOST` overrides its address) and is refreshed before it expires. The user's `name` is the service account's IAM database user: its email without the `.gserviceaccount.com` suffix.
+
+**Example**
+
+```toml
+[[users]]
+name = "pgdog@my-project.iam"
+database = "pgdog"
+password = "client-password"
+server_auth = "gcp_iam"
+```
+
+When any user has `server_auth = "gcp_iam"`, the following settings must be configured as well:
 
 - `tls_verify` must **not** be `"disabled"`.
 - `passthrough_auth` must be `"disabled"`.

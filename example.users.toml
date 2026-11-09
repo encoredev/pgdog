@@ -23,6 +23,11 @@ password = "pgdog"
 # this only affects how PgDog authenticates to PostgreSQL servers.
 # server_auth = "azure_workload_identity"
 
+# Example: backend authentication to Cloud SQL or AlloyDB with the access token
+# of the Google Cloud service account the workload runs as. The user name is
+# the service account's email without the `.gserviceaccount.com` suffix.
+# server_auth = "gcp_iam"
+
 # Example: backend authentication with HashiCorp Vault dynamic credentials.
 # Requires the [vault] section in pgdog.toml. PgDog fetches a generated
 # username and password from `server_vault_path` and rotates them after

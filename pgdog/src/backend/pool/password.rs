@@ -15,6 +15,7 @@ pub(crate) enum PasswordSource {
     Config,
     RdsIam,
     AzureIdentity,
+    GcpIam,
     Vault,
 }
 
@@ -24,6 +25,7 @@ impl Display for PasswordSource {
             Self::Config => write!(f, "config"),
             Self::RdsIam => write!(f, "rds iam"),
             Self::AzureIdentity => write!(f, "azure workload identity"),
+            Self::GcpIam => write!(f, "gcp iam"),
             Self::Vault => write!(f, "vault"),
         }
     }

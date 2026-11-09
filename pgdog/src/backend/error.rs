@@ -96,6 +96,9 @@ pub(crate) enum Error {
     #[error("Azure Workload Identity token generation failed: {0}")]
     AzureWorkloadIdentityToken(String),
 
+    #[error("GCP IAM token fetch failed: {0}")]
+    GcpIamToken(String),
+
     #[error("Vault credentials fetch failed: {0}")]
     VaultCredentials(String),
 
